@@ -4,8 +4,30 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Pen/note icon -->
+    <!-- Obsidian-style gem/crystal shape -->
+    <!-- Main gem body -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L54,78 M38,54 L70,54 M42,38 L66,38 M42,70 L66,70 M38,34 L38,74 Q38,78 42,78 L66,78 Q70,78 70,74 L70,34 Q70,30 66,30 L42,30 Q38,30 38,34 Z" />
+        android:fillColor="#A88BFA"
+        android:pathData="M54,20 L72,38 L72,70 L54,88 L36,70 L36,38 Z" />
+    <!-- Left facet (darker) -->
+    <path
+        android:fillColor="#7C5FC7"
+        android:pathData="M54,20 L36,38 L36,70 L54,54 Z" />
+    <!-- Right facet (lighter) -->
+    <path
+        android:fillColor="#BDA4FF"
+        android:pathData="M54,20 L72,38 L72,70 L54,54 Z" />
+    <!-- Bottom left facet -->
+    <path
+        android:fillColor="#6B4EAF"
+        android:pathData="M36,70 L54,88 L54,54 Z" />
+    <!-- Bottom right facet -->
+    <path
+        android:fillColor="#9678E0"
+        android:pathData="M72,70 L54,88 L54,54 Z" />
+    <!-- Top highlight -->
+    <path
+        android:fillColor="#D4C4FF"
+        android:pathData="M54,20 L62,30 L54,38 L46,30 Z"
+        android:fillAlpha="0.6" />
 </vector>
