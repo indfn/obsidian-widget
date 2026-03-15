@@ -12,6 +12,7 @@ class QuickCaptureActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportRequestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         setContentView(R.layout.activity_quick_capture)
 
         vaultManager = VaultManager(this)
