@@ -17,7 +17,10 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         private const val ACTION_CAPTURE = "com.obsidianwidget.ACTION_CAPTURE"
         private const val ACTION_OPEN = "com.obsidianwidget.ACTION_OPEN"
         private const val ACTION_TOGGLE = "com.obsidianwidget.ACTION_TOGGLE"
+        private const val ACTION_ADD = "com.obsidianwidget.ACTION_ADD"
         const val EXTRA_LINE_INDEX = "extra_line_index"
+        const val EXTRA_APPEND_TO_WIDGET = "extra_append_to_widget"
+        const val EXTRA_WIDGET_ID = "extra_widget_id"
 
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, ObsidianWidgetProvider::class.java).apply {
@@ -42,6 +45,12 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        for (id in appWidgetIds) {
+            VaultManager.deleteWidgetPrefs(context, id)
+        }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
 
@@ -53,11 +62,24 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 }
                 context.startActivity(captureIntent)
             }
-            ACTION_OPEN -> openObsidian(context)
+            ACTION_ADD -> {
+                val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+                val addIntent = Intent(context, QuickCaptureActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    putExtra(EXTRA_APPEND_TO_WIDGET, true)
+                    putExtra(EXTRA_WIDGET_ID, widgetId)
+                }
+                context.startActivity(addIntent)
+            }
+            ACTION_OPEN -> {
+                val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+                openObsidian(context, widgetId)
+            }
             ACTION_TOGGLE -> {
                 val lineIndex = intent.getIntExtra(EXTRA_LINE_INDEX, -1)
+                val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 if (lineIndex >= 0) {
-                    val vaultManager = VaultManager(context)
+                    val vaultManager = VaultManager(context, widgetId)
                     vaultManager.toggleChecklistItem(lineIndex)
                     // Notify the widget data changed so ListView refreshes
                     val appWidgetManager = AppWidgetManager.getInstance(context)
@@ -76,13 +98,14 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
-        val vaultManager = VaultManager(context)
+        val vaultManager = VaultManager(context, appWidgetId)
 
         // Set title based on mode
         views.setTextViewText(R.id.widget_date, vaultManager.getWidgetTitle())
 
         // Check if note has checklist items
-        val hasChecklist = vaultManager.parseChecklist().isNotEmpty()
+        val allItems = vaultManager.parseChecklist()
+        val hasChecklist = allItems.any { !it.isPlainText }
 
         if (hasChecklist) {
             // Show interactive checklist ListView
@@ -99,9 +122,10 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
             // Set up pending intent template for item clicks (toggle)
             val toggleIntent = Intent(context, ObsidianWidgetProvider::class.java).apply {
                 action = ACTION_TOGGLE
+                putExtra(EXTRA_WIDGET_ID, appWidgetId)
             }
             val togglePendingIntent = PendingIntent.getBroadcast(
-                context, 0, toggleIntent,
+                context, appWidgetId, toggleIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
             views.setPendingIntentTemplate(R.id.widget_checklist, togglePendingIntent)
@@ -126,39 +150,65 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
             }
         }
 
+        // Add to note button
+        views.setOnClickPendingIntent(
+            R.id.widget_add,
+            createActionIntent(context, ACTION_ADD, appWidgetId)
+        )
+
+        // Title click opens note in Obsidian
+        views.setOnClickPendingIntent(
+            R.id.widget_date,
+            createActionIntent(context, ACTION_OPEN, appWidgetId)
+        )
+
         // Refresh button
         views.setOnClickPendingIntent(
             R.id.widget_refresh,
-            createActionIntent(context, ACTION_REFRESH)
+            createActionIntent(context, ACTION_REFRESH, appWidgetId)
+        )
+
+        // Settings button opens widget config
+        val configIntent = Intent(context, WidgetConfigActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+        }
+        views.setOnClickPendingIntent(
+            R.id.widget_settings,
+            PendingIntent.getActivity(
+                context, appWidgetId + 10000, configIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         )
 
         // Quick capture button
         views.setOnClickPendingIntent(
             R.id.widget_btn_capture,
-            createActionIntent(context, ACTION_CAPTURE)
+            createActionIntent(context, ACTION_CAPTURE, appWidgetId)
         )
 
-        // Open Obsidian button
-        views.setOnClickPendingIntent(
-            R.id.widget_btn_open,
-            createActionIntent(context, ACTION_OPEN)
+        // Show/hide button bar based on setting
+        views.setViewVisibility(
+            R.id.widget_button_bar,
+            if (vaultManager.showButtons) View.VISIBLE else View.GONE
         )
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
-    private fun createActionIntent(context: Context, action: String): PendingIntent {
+    private fun createActionIntent(context: Context, action: String, appWidgetId: Int): PendingIntent {
         val intent = Intent(context, ObsidianWidgetProvider::class.java).apply {
             this.action = action
+            putExtra(EXTRA_WIDGET_ID, appWidgetId)
         }
         return PendingIntent.getBroadcast(
-            context, action.hashCode(), intent,
+            context, action.hashCode() + appWidgetId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
 
-    private fun openObsidian(context: Context) {
-        val vaultManager = VaultManager(context)
+    private fun openObsidian(context: Context, widgetId: Int) {
+        val vaultManager = VaultManager(context, widgetId)
         val vaultName = vaultManager.vaultName
 
         // Try to open the specific note in Obsidian via its URI scheme

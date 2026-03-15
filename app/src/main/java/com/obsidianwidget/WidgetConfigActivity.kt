@@ -9,6 +9,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioGroup
+import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +24,7 @@ class WidgetConfigActivity : AppCompatActivity() {
     private lateinit var pinnedSection: LinearLayout
     private lateinit var dailySection: LinearLayout
     private lateinit var pinnedNoteText: TextView
+    private lateinit var showButtonsToggle: Switch
 
     private val folderPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -44,15 +46,7 @@ class WidgetConfigActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_widget_config)
 
-        vaultManager = VaultManager(this)
-        vaultPathText = findViewById(R.id.config_vault_path)
-        dailyFolderInput = findViewById(R.id.config_daily_folder)
-        noteModeGroup = findViewById(R.id.config_note_mode_group)
-        pinnedSection = findViewById(R.id.config_pinned_section)
-        dailySection = findViewById(R.id.config_daily_section)
-        pinnedNoteText = findViewById(R.id.config_pinned_note_text)
-
-        // Get the widget ID from the intent
+        // Get the widget ID from the intent FIRST
         appWidgetId = intent?.extras?.getInt(
             AppWidgetManager.EXTRA_APPWIDGET_ID,
             AppWidgetManager.INVALID_APPWIDGET_ID
@@ -62,6 +56,15 @@ class WidgetConfigActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        vaultManager = VaultManager(this, appWidgetId)
+        vaultPathText = findViewById(R.id.config_vault_path)
+        dailyFolderInput = findViewById(R.id.config_daily_folder)
+        noteModeGroup = findViewById(R.id.config_note_mode_group)
+        pinnedSection = findViewById(R.id.config_pinned_section)
+        dailySection = findViewById(R.id.config_daily_section)
+        pinnedNoteText = findViewById(R.id.config_pinned_note_text)
+        showButtonsToggle = findViewById(R.id.config_show_buttons)
 
         // Load existing settings
         if (vaultManager.isVaultConfigured) {
@@ -76,6 +79,7 @@ class WidgetConfigActivity : AppCompatActivity() {
         vaultManager.pinnedNoteName?.let {
             pinnedNoteText.text = it.removeSuffix(".md")
         }
+        showButtonsToggle.isChecked = vaultManager.showButtons
 
         findViewById<Button>(R.id.config_select_vault).setOnClickListener {
             folderPicker.launch(null)
@@ -112,7 +116,7 @@ class WidgetConfigActivity : AppCompatActivity() {
     private fun onNoteSelected(uri: Uri) {
         contentResolver.takePersistableUriPermission(
             uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Note"
         vaultManager.pinnedNoteUri = uri
@@ -124,10 +128,15 @@ class WidgetConfigActivity : AppCompatActivity() {
         vaultManager.dailyFolder = dailyFolderInput.text.toString().trim()
         vaultManager.noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.config_radio_pinned)
             VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY
+        vaultManager.showButtons = showButtonsToggle.isChecked
 
-        // Trigger widget update
+        // Trigger update for this specific widget
         val appWidgetManager = AppWidgetManager.getInstance(this)
-        ObsidianWidgetProvider().onUpdate(this, appWidgetManager, intArrayOf(appWidgetId))
+        val provider = ObsidianWidgetProvider()
+        provider.onUpdate(this, appWidgetManager, intArrayOf(appWidgetId))
+
+        // Also refresh all other widgets so they don't go stale
+        ObsidianWidgetProvider.updateAllWidgets(this)
 
         // Return success
         val resultValue = Intent().apply {

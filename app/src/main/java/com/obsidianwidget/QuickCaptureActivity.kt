@@ -17,7 +17,14 @@ class QuickCaptureActivity : AppCompatActivity() {
 
         vaultManager = VaultManager(this)
 
+        val appendToWidget = intent.getBooleanExtra(ObsidianWidgetProvider.EXTRA_APPEND_TO_WIDGET, false)
+        val widgetId = intent.getIntExtra(ObsidianWidgetProvider.EXTRA_WIDGET_ID, -1)
+        val widgetVaultManager = if (widgetId >= 0) VaultManager(this, widgetId) else vaultManager
         val captureInput = findViewById<EditText>(R.id.capture_input)
+
+        if (appendToWidget) {
+            captureInput.hint = "Add to ${widgetVaultManager.getWidgetTitle()}..."
+        }
 
         findViewById<Button>(R.id.btn_cancel).setOnClickListener {
             finish()
@@ -35,7 +42,11 @@ class QuickCaptureActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val success = vaultManager.appendToDailyNote(text)
+            val success = if (appendToWidget) {
+                widgetVaultManager.appendToWidgetNote(text)
+            } else {
+                vaultManager.appendToDailyNote(text)
+            }
             if (success) {
                 Toast.makeText(this, R.string.note_saved, Toast.LENGTH_SHORT).show()
                 ObsidianWidgetProvider.updateAllWidgets(this)

@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioGroup
+import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pinnedNoteSection: LinearLayout
     private lateinit var dailyNoteSection: LinearLayout
     private lateinit var pinnedNoteText: TextView
+    private lateinit var showButtonsToggle: Switch
 
     private val folderPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -49,6 +51,7 @@ class MainActivity : AppCompatActivity() {
         pinnedNoteSection = findViewById(R.id.pinned_note_section)
         dailyNoteSection = findViewById(R.id.daily_note_section)
         pinnedNoteText = findViewById(R.id.pinned_note_text)
+        showButtonsToggle = findViewById(R.id.show_buttons_toggle)
 
         findViewById<Button>(R.id.btn_select_vault).setOnClickListener {
             folderPicker.launch(null)
@@ -87,6 +90,9 @@ class MainActivity : AppCompatActivity() {
         vaultManager.pinnedNoteName?.let {
             pinnedNoteText.text = it.removeSuffix(".md")
         }
+
+        // Set show buttons toggle
+        showButtonsToggle.isChecked = vaultManager.showButtons
     }
 
     private fun updateModeSections(isPinned: Boolean) {
@@ -99,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         vaultManager.dateFormat = dateFormatInput.text.toString().trim().ifBlank { "yyyy-MM-dd" }
         vaultManager.noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.radio_pinned)
             VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY
+        vaultManager.showButtons = showButtonsToggle.isChecked
         ObsidianWidgetProvider.updateAllWidgets(this)
     }
 

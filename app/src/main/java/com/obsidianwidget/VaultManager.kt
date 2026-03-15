@@ -13,33 +13,53 @@ import java.time.format.DateTimeFormatter
 /**
  * Manages reading/writing to the Obsidian vault via SAF (Storage Access Framework).
  */
-class VaultManager(private val context: Context) {
+class VaultManager(private val context: Context, private val widgetId: Int = -1) {
 
     enum class NoteMode { DAILY, PINNED }
 
     data class ChecklistItem(
         val lineIndex: Int,
         val text: String,
-        val isChecked: Boolean
+        val isChecked: Boolean,
+        val isPlainText: Boolean = false
     )
 
     companion object {
         private const val PREFS_NAME = "obsidian_widget_prefs"
+        // Global keys (shared across all widgets)
         private const val KEY_VAULT_URI = "vault_uri"
         private const val KEY_VAULT_NAME = "vault_name"
+        // Per-widget keys (suffixed with _widgetId)
         private const val KEY_DAILY_FOLDER = "daily_folder"
         private const val KEY_DATE_FORMAT = "date_format"
         private const val KEY_NOTE_MODE = "note_mode"
         private const val KEY_PINNED_NOTE_URI = "pinned_note_uri"
         private const val KEY_PINNED_NOTE_NAME = "pinned_note_name"
+        private const val KEY_SHOW_BUTTONS = "show_buttons"
         private const val DEFAULT_DATE_FORMAT = "yyyy-MM-dd"
 
         private val CHECKLIST_REGEX = Regex("""^(\s*)-\s*\[([ xX])\]\s*(.*)$""")
+
+        fun deleteWidgetPrefs(context: Context, widgetId: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove("${KEY_DAILY_FOLDER}_$widgetId")
+                .remove("${KEY_DATE_FORMAT}_$widgetId")
+                .remove("${KEY_NOTE_MODE}_$widgetId")
+                .remove("${KEY_PINNED_NOTE_URI}_$widgetId")
+                .remove("${KEY_PINNED_NOTE_NAME}_$widgetId")
+                .remove("${KEY_SHOW_BUTTONS}_$widgetId")
+                .apply()
+        }
     }
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private fun wk(key: String): String =
+        if (widgetId >= 0) "${key}_$widgetId" else key
+
+    // Global settings (same for all widgets)
     var vaultUri: Uri?
         get() = prefs.getString(KEY_VAULT_URI, null)?.let { Uri.parse(it) }
         set(value) = prefs.edit().putString(KEY_VAULT_URI, value?.toString()).apply()
@@ -48,25 +68,30 @@ class VaultManager(private val context: Context) {
         get() = prefs.getString(KEY_VAULT_NAME, null)
         set(value) = prefs.edit().putString(KEY_VAULT_NAME, value).apply()
 
+    // Per-widget settings
     var dailyFolder: String
-        get() = prefs.getString(KEY_DAILY_FOLDER, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_DAILY_FOLDER, value).apply()
+        get() = prefs.getString(wk(KEY_DAILY_FOLDER), prefs.getString(KEY_DAILY_FOLDER, "") ?: "") ?: ""
+        set(value) = prefs.edit().putString(wk(KEY_DAILY_FOLDER), value).apply()
 
     var dateFormat: String
-        get() = prefs.getString(KEY_DATE_FORMAT, DEFAULT_DATE_FORMAT) ?: DEFAULT_DATE_FORMAT
-        set(value) = prefs.edit().putString(KEY_DATE_FORMAT, value).apply()
+        get() = prefs.getString(wk(KEY_DATE_FORMAT), prefs.getString(KEY_DATE_FORMAT, DEFAULT_DATE_FORMAT) ?: DEFAULT_DATE_FORMAT) ?: DEFAULT_DATE_FORMAT
+        set(value) = prefs.edit().putString(wk(KEY_DATE_FORMAT), value).apply()
 
     var noteMode: NoteMode
-        get() = if (prefs.getString(KEY_NOTE_MODE, "DAILY") == "PINNED") NoteMode.PINNED else NoteMode.DAILY
-        set(value) = prefs.edit().putString(KEY_NOTE_MODE, value.name).apply()
+        get() = if (prefs.getString(wk(KEY_NOTE_MODE), prefs.getString(KEY_NOTE_MODE, "DAILY")) == "PINNED") NoteMode.PINNED else NoteMode.DAILY
+        set(value) = prefs.edit().putString(wk(KEY_NOTE_MODE), value.name).apply()
 
     var pinnedNoteUri: Uri?
-        get() = prefs.getString(KEY_PINNED_NOTE_URI, null)?.let { Uri.parse(it) }
-        set(value) = prefs.edit().putString(KEY_PINNED_NOTE_URI, value?.toString()).apply()
+        get() = prefs.getString(wk(KEY_PINNED_NOTE_URI), prefs.getString(KEY_PINNED_NOTE_URI, null))?.let { Uri.parse(it) }
+        set(value) = prefs.edit().putString(wk(KEY_PINNED_NOTE_URI), value?.toString()).apply()
 
     var pinnedNoteName: String?
-        get() = prefs.getString(KEY_PINNED_NOTE_NAME, null)
-        set(value) = prefs.edit().putString(KEY_PINNED_NOTE_NAME, value).apply()
+        get() = prefs.getString(wk(KEY_PINNED_NOTE_NAME), prefs.getString(KEY_PINNED_NOTE_NAME, null))
+        set(value) = prefs.edit().putString(wk(KEY_PINNED_NOTE_NAME), value).apply()
+
+    var showButtons: Boolean
+        get() = prefs.getBoolean(wk(KEY_SHOW_BUTTONS), prefs.getBoolean(KEY_SHOW_BUTTONS, true))
+        set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_BUTTONS), value).apply()
 
     val isVaultConfigured: Boolean
         get() = vaultUri != null
@@ -120,6 +145,21 @@ class VaultManager(private val context: Context) {
     /**
      * Append text to today's daily note (creates the file if it doesn't exist).
      */
+    fun appendToWidgetNote(text: String): Boolean {
+        val formatted = if (parseChecklist().any { !it.isPlainText }) "- [ ] $text" else text
+        return when (noteMode) {
+            NoteMode.DAILY -> appendToDailyNote(formatted)
+            NoteMode.PINNED -> appendToPinnedNote(formatted)
+        }
+    }
+
+    fun appendToPinnedNote(text: String): Boolean {
+        val uri = pinnedNoteUri ?: return false
+        val existing = readFileContent(uri) ?: ""
+        val newContent = if (existing.isNotBlank()) "$existing\n$text" else text
+        return writeFileContent(uri, newContent)
+    }
+
     fun appendToDailyNote(text: String): Boolean {
         val uri = vaultUri ?: return false
         val rootDoc = DocumentFile.fromTreeUri(context, uri) ?: return false
@@ -213,6 +253,8 @@ class VaultManager(private val context: Context) {
                 val checked = match.groupValues[2].lowercase() == "x"
                 val text = match.groupValues[3].trim()
                 items.add(ChecklistItem(lineIndex = index, text = text, isChecked = checked))
+            } else if (line.isNotBlank()) {
+                items.add(ChecklistItem(lineIndex = index, text = line.trim(), isChecked = false, isPlainText = true))
             }
         }
         return items
