@@ -110,7 +110,7 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
             val single = prefs.getString(wk(KEY_PINNED_NOTE_URI), prefs.getString(KEY_PINNED_NOTE_URI, null))
             return if (single != null) listOf(single) else emptyList()
         }
-        set(value) = prefs.edit().putString(wk(KEY_PINNED_NOTE_URIS), value.joinToString("|||")).apply()
+        set(value) { prefs.edit().putString(wk(KEY_PINNED_NOTE_URIS), value.joinToString("|||")).commit() }
 
     var pinnedNoteNameList: List<String>
         get() {
@@ -119,11 +119,11 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
             val single = prefs.getString(wk(KEY_PINNED_NOTE_NAME), prefs.getString(KEY_PINNED_NOTE_NAME, null))
             return if (single != null) listOf(single) else emptyList()
         }
-        set(value) = prefs.edit().putString(wk(KEY_PINNED_NOTE_NAMES), value.joinToString("|||")).apply()
+        set(value) { prefs.edit().putString(wk(KEY_PINNED_NOTE_NAMES), value.joinToString("|||")).commit() }
 
     var currentNoteIndex: Int
         get() = prefs.getInt(wk(KEY_CURRENT_NOTE_INDEX), 0)
-        set(value) = prefs.edit().putInt(wk(KEY_CURRENT_NOTE_INDEX), value).apply()
+        set(value) { prefs.edit().putInt(wk(KEY_CURRENT_NOTE_INDEX), value).commit() }
 
     fun addPinnedNote(uri: Uri, name: String) {
         val uris = pinnedNoteUriList.toMutableList()
@@ -184,6 +184,27 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
     var widgetAlpha: Int
         get() = prefs.getInt(wk(KEY_WIDGET_ALPHA), 100)
         set(value) = prefs.edit().putInt(wk(KEY_WIDGET_ALPHA), value).apply()
+
+    /**
+     * Batch save all widget settings using commit() for reliable persistence.
+     */
+    fun saveWidgetSettings(
+        dailyFolder: String,
+        dateFormat: String,
+        noteMode: NoteMode,
+        showButtons: Boolean,
+        sortUnchecked: Boolean,
+        widgetAlpha: Int
+    ) {
+        prefs.edit()
+            .putString(wk(KEY_DAILY_FOLDER), dailyFolder)
+            .putString(wk(KEY_DATE_FORMAT), dateFormat)
+            .putString(wk(KEY_NOTE_MODE), noteMode.name)
+            .putBoolean(wk(KEY_SHOW_BUTTONS), showButtons)
+            .putBoolean(wk(KEY_SORT_UNCHECKED), sortUnchecked)
+            .putInt(wk(KEY_WIDGET_ALPHA), widgetAlpha)
+            .commit()
+    }
 
     val isVaultConfigured: Boolean
         get() = vaultUri != null

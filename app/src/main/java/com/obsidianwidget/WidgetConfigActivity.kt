@@ -29,6 +29,7 @@ class WidgetConfigActivity : AppCompatActivity() {
     private lateinit var transparencyLabel: TextView
     private lateinit var showButtonsToggle: Switch
     private lateinit var sortUncheckedToggle: Switch
+    private lateinit var dateFormatInput: EditText
 
     private val folderPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -72,26 +73,11 @@ class WidgetConfigActivity : AppCompatActivity() {
         transparencyLabel = findViewById(R.id.config_transparency_label)
         showButtonsToggle = findViewById(R.id.config_show_buttons)
         sortUncheckedToggle = findViewById(R.id.config_sort_unchecked)
+        dateFormatInput = findViewById(R.id.config_date_format)
 
-        // Load existing settings
-        if (vaultManager.isVaultConfigured) {
-            vaultPathText.text = vaultManager.vaultName ?: "Selected"
-        }
-        dailyFolderInput.setText(vaultManager.dailyFolder)
+        // Load saved settings into UI
+        loadSettings()
 
-        val isPinned = vaultManager.noteMode == VaultManager.NoteMode.PINNED
-        noteModeGroup.check(if (isPinned) R.id.config_radio_pinned else R.id.config_radio_daily)
-        updateModeSections(isPinned)
-
-        vaultManager.pinnedNoteName?.let {
-            // Migration handled by list getter
-        }
-        refreshNoteList()
-        showButtonsToggle.isChecked = vaultManager.showButtons
-        sortUncheckedToggle.isChecked = vaultManager.sortUnchecked
-
-        transparencySeekBar.progress = vaultManager.widgetAlpha
-        transparencyLabel.text = "${vaultManager.widgetAlpha}%"
         transparencySeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 transparencyLabel.text = "$progress%"
@@ -115,6 +101,41 @@ class WidgetConfigActivity : AppCompatActivity() {
         findViewById<Button>(R.id.config_save).setOnClickListener {
             saveAndFinish()
         }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        val newWidgetId = intent?.extras?.getInt(
+            AppWidgetManager.EXTRA_APPWIDGET_ID,
+            AppWidgetManager.INVALID_APPWIDGET_ID
+        ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
+
+        if (newWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            appWidgetId = newWidgetId
+            vaultManager = VaultManager(this, appWidgetId)
+            loadSettings()
+        }
+    }
+
+    private fun loadSettings() {
+        if (vaultManager.isVaultConfigured) {
+            vaultPathText.text = vaultManager.vaultName ?: "Selected"
+        }
+        dailyFolderInput.setText(vaultManager.dailyFolder)
+
+        val isPinned = vaultManager.noteMode == VaultManager.NoteMode.PINNED
+        noteModeGroup.check(if (isPinned) R.id.config_radio_pinned else R.id.config_radio_daily)
+        updateModeSections(isPinned)
+
+        refreshNoteList()
+        showButtonsToggle.isChecked = vaultManager.showButtons
+        sortUncheckedToggle.isChecked = vaultManager.sortUnchecked
+        dateFormatInput.setText(vaultManager.dateFormat)
+
+        transparencySeekBar.progress = vaultManager.widgetAlpha
+        transparencyLabel.text = "${vaultManager.widgetAlpha}%"
     }
 
     private fun updateModeSections(isPinned: Boolean) {
@@ -184,12 +205,16 @@ class WidgetConfigActivity : AppCompatActivity() {
     }
 
     private fun saveAndFinish() {
-        vaultManager.dailyFolder = dailyFolderInput.text.toString().trim()
-        vaultManager.noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.config_radio_pinned)
-            VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY
-        vaultManager.showButtons = showButtonsToggle.isChecked
-        vaultManager.sortUnchecked = sortUncheckedToggle.isChecked
-        vaultManager.widgetAlpha = transparencySeekBar.progress
+        // Use batch commit for reliable persistence
+        vaultManager.saveWidgetSettings(
+            dailyFolder = dailyFolderInput.text.toString().trim(),
+            dateFormat = dateFormatInput.text.toString().trim().ifBlank { "yyyy-MM-dd" },
+            noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.config_radio_pinned)
+                VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY,
+            showButtons = showButtonsToggle.isChecked,
+            sortUnchecked = sortUncheckedToggle.isChecked,
+            widgetAlpha = transparencySeekBar.progress
+        )
 
         // Trigger update for this specific widget
         val appWidgetManager = AppWidgetManager.getInstance(this)
