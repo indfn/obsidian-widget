@@ -80,7 +80,7 @@ All settings are per-widget. Tap the ⚙ icon on any widget to access:
 For enhanced functionality, consider installing:
 
 - **[Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks)** — adds priority emojis (🔺⏫🔼🔽⏬) and metadata for task management
-- **[Completed Task](https://github.com/SimonThorng/obsidian-completed-task)** — auto-sorts tasks by status and priority when syncing with the widget
+- **[Completed Tasks](https://github.com/mgussekloo/obsidian-completedtasks)** — auto-sorts tasks by status and priority when syncing with the widget
 
 The widget works standalone but integrates seamlessly with these plugins for advanced task sorting.
 
