@@ -41,10 +41,13 @@ Or open in Android Studio and click **Run**.
 - **Daily note or pinned notes** — show today's daily note or pick specific files
 - **Multiple notes per widget** — swipe between notes with navigation arrows
 - **Interactive checkboxes** — tap to toggle `- [ ]` / `- [x]` directly from the widget
+- **Collapsible subtasks** — hierarchical task rendering with expand/collapse controls (default collapsed)
+- **Open notes on tap** — tap task text to open the source note in Obsidian at the correct location
 - **Quick capture** — pop-up dialog to append text to your note
 - **Append with +** — one-tap add, auto-formats as checkbox if the note uses them
 - **Markdown rendering** — bold, italic, headings, and bullet lists
-- **Sort unchecked first** — push completed tasks to the bottom
+- **File-level task sorting** — integrates with Completed Tasks plugin (sorts by status + priority emoji)
+- **Completion markers** — auto-adds `✅ YYYY-MM-DD` when completing tasks with Tasks plugin metadata
 - **Widget transparency** — adjustable opacity to blend with your wallpaper
 - **Auto-refresh** — updates every 30 minutes and on screen unlock
 - **Deep link to Obsidian** — tap the title to open the note in Obsidian
@@ -63,7 +66,7 @@ All settings are per-widget. Tap the ⚙ icon on any widget to access:
 | Daily Subfolder | e.g. `Daily Notes` |
 | Date Format | Any Java date pattern (`yyyy-MM-dd`, `dd-MM-yyyy`, etc.) |
 | Show Buttons | Toggle the capture/add button bar |
-| Sort Unchecked | Move incomplete tasks to the top |
+| Sync Completed Tasks | Enable file-level sorting compatible with Completed Tasks plugin |
 | Widget Opacity | 0–100% transparency slider |
 
 ## Requirements
@@ -71,6 +74,15 @@ All settings are per-widget. Tap the ⚙ icon on any widget to access:
 - Android 8.0+ (API 26)
 - Obsidian vault accessible on device (local or synced)
 - No root or special permissions needed — uses Android's Storage Access Framework
+
+### Optional Obsidian Plugins
+
+For enhanced functionality, consider installing:
+
+- **[Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks)** — adds priority emojis (🔺⏫🔼🔽⏬) and metadata for task management
+- **[Completed Task](https://github.com/SimonThorng/obsidian-completed-task)** — auto-sorts tasks by status and priority when syncing with the widget
+
+The widget works standalone but integrates seamlessly with these plugins for advanced task sorting.
 
 ## Project Structure
 
