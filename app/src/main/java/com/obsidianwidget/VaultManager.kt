@@ -23,7 +23,10 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         val isChecked: Boolean,
         val isPlainText: Boolean = false,
         val isHeading: Boolean = false,
-        val isBullet: Boolean = false
+        val isBullet: Boolean = false,
+        val indentLevel: Int = 0,
+        val hasChildren: Boolean = false,
+        var isCollapsed: Boolean = false
     )
 
     companion object {
@@ -38,7 +41,6 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         private const val KEY_PINNED_NOTE_URI = "pinned_note_uri"
         private const val KEY_PINNED_NOTE_NAME = "pinned_note_name"
         private const val KEY_SHOW_BUTTONS = "show_buttons"
-        private const val KEY_SORT_UNCHECKED = "sort_unchecked"
         private const val KEY_PINNED_NOTE_URIS = "pinned_note_uris"
         private const val KEY_PINNED_NOTE_NAMES = "pinned_note_names"
         private const val KEY_CURRENT_NOTE_INDEX = "current_note_index"
@@ -48,11 +50,24 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         private const val KEY_SHOW_ADD_TO_TOP = "show_add_to_top"
         private const val KEY_WIDGET_THEME = "widget_theme"
         private const val KEY_ACCENT_COLOR = "accent_color"
+        private const val KEY_SYNC_COMPLETED_TASKS = "sync_completed_tasks"
         private const val DEFAULT_DATE_FORMAT = "yyyy-MM-dd"
 
+        // Task patterns - expanded to support various checkbox states
         private val CHECKLIST_REGEX = Regex("""^(\s*)-\s*\[([ xX])\]\s*(.*)$""")
+        private val TASK_LINE_REGEX = Regex("""^(\s*)-\s*\[([ xX/\-><])\]\s*(.*)$""")
         private val HEADING_REGEX = Regex("""^(#{1,6})\s+(.+)$""")
         private val BULLET_REGEX = Regex("""^(\s*)[*+-]\s+(.+)$""")
+        
+        // Tasks plugin detection patterns
+        private val TASKS_EMOJI_REGEX = Regex("""[📅⏫🔼🔽⏬✅❌🔁📆🔺]""")
+        private val DATE_PATTERN_REGEX = Regex("""\d{4}-\d{2}-\d{2}""")
+        private val COMPLETION_MARKER_REGEX = Regex("""\s*✅\s*\d{4}-\d{2}-\d{2}""")
+        
+        // Default Completed Tasks plugin settings
+        private val DEFAULT_STATUSES = listOf("- [ ]", "- [/]", "- [x]", "- [-]", "- [>]", "- [<]")
+        private val DEFAULT_SORTED_STATUSES = listOf("- [ ]", "- [/]", "- [x]")
+        private val DEFAULT_PRIORITY_EMOJIS = listOf("⏬", "🔽", "🔼", "⏫", "🔺")
 
         fun deleteWidgetPrefs(context: Context, widgetId: Int) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -63,7 +78,6 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
                 .remove("${KEY_PINNED_NOTE_URI}_$widgetId")
                 .remove("${KEY_PINNED_NOTE_NAME}_$widgetId")
                 .remove("${KEY_SHOW_BUTTONS}_$widgetId")
-                .remove("${KEY_SORT_UNCHECKED}_$widgetId")
                 .remove("${KEY_PINNED_NOTE_URIS}_$widgetId")
                 .remove("${KEY_PINNED_NOTE_NAMES}_$widgetId")
                 .remove("${KEY_CURRENT_NOTE_INDEX}_$widgetId")
@@ -73,6 +87,7 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
                 .remove("${KEY_SHOW_ADD_TO_TOP}_$widgetId")
                 .remove("${KEY_WIDGET_THEME}_$widgetId")
                 .remove("${KEY_ACCENT_COLOR}_$widgetId")
+                .remove("${KEY_SYNC_COMPLETED_TASKS}_$widgetId")
                 .apply()
         }
     }
@@ -183,13 +198,37 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         return names[idx]
     }
 
+    /**
+     * Get the relative path of the current pinned note within the vault.
+     * This is needed for Obsidian deep links which expect paths like "folder/note" not just "note".
+     */
+    fun getCurrentPinnedNoteRelativePath(): String? {
+        val noteUri = getCurrentPinnedNoteUri() ?: return null
+        val vaultUriStr = vaultUri?.toString() ?: return getCurrentPinnedNoteName()?.removeSuffix(".md")
+        
+        // SAF URIs look like: content://...document/primary:VaultName/folder/note.md
+        // or content://...tree/primary:VaultName/document/primary:VaultName/folder/note.md
+        val notePathSegment = noteUri.lastPathSegment ?: return getCurrentPinnedNoteName()?.removeSuffix(".md")
+        val vaultPathSegment = Uri.parse(vaultUriStr).lastPathSegment ?: return getCurrentPinnedNoteName()?.removeSuffix(".md")
+        
+        // Extract the part after the colon (e.g., "VaultName" or "VaultName/folder/note.md")
+        val vaultPath = vaultPathSegment.substringAfter(':', "")
+        val notePath = notePathSegment.substringAfter(':', "")
+        
+        // notePath might be "VaultName/folder/note.md", vaultPath is "VaultName"
+        // We want "folder/note" (relative path without .md)
+        return if (notePath.startsWith(vaultPath)) {
+            val relativePath = notePath.removePrefix(vaultPath).trimStart('/').removeSuffix(".md")
+            relativePath.ifEmpty { getCurrentPinnedNoteName()?.removeSuffix(".md") }
+        } else {
+            // Fallback to just the filename
+            getCurrentPinnedNoteName()?.removeSuffix(".md")
+        }
+    }
+
     var showButtons: Boolean
         get() = prefs.getBoolean(wk(KEY_SHOW_BUTTONS), prefs.getBoolean(KEY_SHOW_BUTTONS, true))
         set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_BUTTONS), value).apply()
-
-    var sortUnchecked: Boolean
-        get() = prefs.getBoolean(wk(KEY_SORT_UNCHECKED), prefs.getBoolean(KEY_SORT_UNCHECKED, false))
-        set(value) = prefs.edit().putBoolean(wk(KEY_SORT_UNCHECKED), value).apply()
 
     var widgetAlpha: Int
         get() = prefs.getInt(wk(KEY_WIDGET_ALPHA), 100)
@@ -206,6 +245,10 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
     var showAddToTop: Boolean
         get() = prefs.getBoolean(wk(KEY_SHOW_ADD_TO_TOP), true)
         set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_ADD_TO_TOP), value).apply()
+
+    var syncCompletedTasks: Boolean
+        get() = prefs.getBoolean(wk(KEY_SYNC_COMPLETED_TASKS), false)
+        set(value) = prefs.edit().putBoolean(wk(KEY_SYNC_COMPLETED_TASKS), value).apply()
 
     var widgetTheme: String
         get() = prefs.getString(wk(KEY_WIDGET_THEME), "dark") ?: "dark"
@@ -253,26 +296,26 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         dateFormat: String,
         noteMode: NoteMode,
         showButtons: Boolean,
-        sortUnchecked: Boolean,
         widgetAlpha: Int,
         tapCheckboxOnly: Boolean,
         addToTop: Boolean,
         showAddToTop: Boolean,
         widgetTheme: String,
-        accentColor: String
+        accentColor: String,
+        syncCompletedTasks: Boolean
     ) {
         prefs.edit()
             .putString(wk(KEY_DAILY_FOLDER), dailyFolder)
             .putString(wk(KEY_DATE_FORMAT), dateFormat)
             .putString(wk(KEY_NOTE_MODE), noteMode.name)
             .putBoolean(wk(KEY_SHOW_BUTTONS), showButtons)
-            .putBoolean(wk(KEY_SORT_UNCHECKED), sortUnchecked)
             .putInt(wk(KEY_WIDGET_ALPHA), widgetAlpha)
             .putBoolean(wk(KEY_TAP_CHECKBOX_ONLY), tapCheckboxOnly)
             .putBoolean(wk(KEY_ADD_TO_TOP), addToTop)
             .putBoolean(wk(KEY_SHOW_ADD_TO_TOP), showAddToTop)
             .putString(wk(KEY_WIDGET_THEME), widgetTheme)
             .putString(wk(KEY_ACCENT_COLOR), accentColor)
+            .putBoolean(wk(KEY_SYNC_COMPLETED_TASKS), syncCompletedTasks)
             .commit()
     }
 
@@ -425,42 +468,154 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
     }
 
     /**
-     * Parse checklist items from the current widget note.
+     * Parse checklist items from the current widget note with hierarchy support.
      */
     fun parseChecklist(): List<ChecklistItem> {
         val content = readWidgetNote() ?: return emptyList()
+        val lines = content.lines()
         val items = mutableListOf<ChecklistItem>()
-        content.lines().forEachIndexed { index, line ->
+        
+        // Get collapsed state
+        val collapsedKey = "collapsed_items_$widgetId"
+        val collapsedSet = prefs.getStringSet(collapsedKey, emptySet()) ?: emptySet()
+        
+        lines.forEachIndexed { index, line ->
             val match = CHECKLIST_REGEX.matchEntire(line)
             val headingMatch = HEADING_REGEX.matchEntire(line)
+            
             if (match != null) {
+                val indent = match.groupValues[1]
+                // Count indent level: tabs or spaces (tab = 1 level, 2 spaces = 1 level)
+                val indentLevel = indent.count { it == '\t' } + (indent.count { it == ' ' } / 2)
                 val checked = match.groupValues[2].lowercase() == "x"
                 val text = match.groupValues[3].trim()
-                items.add(ChecklistItem(lineIndex = index, text = text, isChecked = checked))
+                
+                items.add(ChecklistItem(
+                    lineIndex = index,
+                    text = text,
+                    isChecked = checked,
+                    indentLevel = indentLevel,
+                    isCollapsed = collapsedSet.contains(index.toString())
+                ))
             } else if (headingMatch != null) {
                 val text = headingMatch.groupValues[2].trim()
-                items.add(ChecklistItem(lineIndex = index, text = text, isChecked = false, isPlainText = true, isHeading = true))
+                items.add(ChecklistItem(
+                    lineIndex = index,
+                    text = text,
+                    isChecked = false,
+                    isPlainText = true,
+                    isHeading = true
+                ))
             } else {
                 val bulletMatch = BULLET_REGEX.matchEntire(line)
                 if (bulletMatch != null) {
                     val text = bulletMatch.groupValues[2].trim()
-                    items.add(ChecklistItem(lineIndex = index, text = text, isChecked = false, isPlainText = true, isBullet = true))
+                    items.add(ChecklistItem(
+                        lineIndex = index,
+                        text = text,
+                        isChecked = false,
+                        isPlainText = true,
+                        isBullet = true
+                    ))
                 } else if (line.isNotBlank()) {
-                    items.add(ChecklistItem(lineIndex = index, text = line.trim(), isChecked = false, isPlainText = true))
+                    items.add(ChecklistItem(
+                        lineIndex = index,
+                        text = line.trim(),
+                        isChecked = false,
+                        isPlainText = true
+                    ))
                 }
             }
         }
-        if (sortUnchecked) {
-            val nonChecklist = items.filter { it.isPlainText }
-            val unchecked = items.filter { !it.isPlainText && !it.isChecked }
-            val checked = items.filter { !it.isPlainText && it.isChecked }
-            return nonChecklist + unchecked + checked
+        
+        // Determine hasChildren and set default collapsed state
+        for (i in items.indices) {
+            if (!items[i].isPlainText) {
+                // Check if next item is indented more (is a child)
+                if (i + 1 < items.size && 
+                    !items[i + 1].isPlainText && 
+                    items[i + 1].indentLevel > items[i].indentLevel) {
+                    // Has children - set collapsed state
+                    val lineStr = items[i].lineIndex.toString()
+                    val isCollapsed = if (collapsedSet.contains(lineStr)) {
+                        // Explicitly collapsed
+                        true
+                    } else if (collapsedSet.contains("expanded_$lineStr")) {
+                        // Explicitly expanded
+                        false
+                    } else {
+                        // Default: collapsed
+                        true
+                    }
+                    items[i] = items[i].copy(hasChildren = true, isCollapsed = isCollapsed)
+                }
+            }
         }
-        return items
+        
+        // Filter out children of collapsed parents
+        return filterCollapsedChildren(items)
+    }
+    
+    private fun filterCollapsedChildren(items: List<ChecklistItem>): List<ChecklistItem> {
+        val result = mutableListOf<ChecklistItem>()
+        var i = 0
+        
+        while (i < items.size) {
+            result.add(items[i])
+            
+            // If this item is collapsed and has children, skip all children
+            if (items[i].isCollapsed && items[i].hasChildren) {
+                val parentLevel = items[i].indentLevel
+                i++
+                // Skip all items with higher indent level
+                while (i < items.size && !items[i].isPlainText && items[i].indentLevel > parentLevel) {
+                    i++
+                }
+            } else {
+                i++
+            }
+        }
+        
+        return result
+    }
+    
+    /**
+     * Toggle collapse state for a task item.
+     * Default state is collapsed, so we track expanded items with "expanded_" prefix.
+     */
+    fun toggleCollapse(lineIndex: Int) {
+        val collapsedKey = "collapsed_items_$widgetId"
+        val collapsedSet = prefs.getStringSet(collapsedKey, emptySet())?.toMutableSet() ?: mutableSetOf()
+        
+        val lineStr = lineIndex.toString()
+        val expandedKey = "expanded_$lineStr"
+        
+        // If explicitly marked (either collapsed or expanded), toggle it
+        when {
+            collapsedSet.contains(lineStr) -> {
+                // Was explicitly collapsed, now expand
+                collapsedSet.remove(lineStr)
+                collapsedSet.add(expandedKey)
+            }
+            collapsedSet.contains(expandedKey) -> {
+                // Was explicitly expanded, back to default (collapsed)
+                collapsedSet.remove(expandedKey)
+            }
+            else -> {
+                // Default is collapsed, so clicking means expand
+                collapsedSet.add(expandedKey)
+            }
+        }
+        
+        prefs.edit().putStringSet(collapsedKey, collapsedSet).apply()
     }
 
     /**
      * Toggle a checklist item by its line index in the current widget note.
+     * Implements Tasks plugin compatibility:
+     * - Adds completion marker (✅ YYYY-MM-DD) when completing tasks with Tasks plugin metadata
+     * - Removes completion marker when unchecking
+     * - Triggers file-level sorting for top-level tasks when syncCompletedTasks is enabled
      */
     fun toggleChecklistItem(lineIndex: Int): Boolean {
         val noteUri = getWidgetNoteUri() ?: return false
@@ -475,11 +630,152 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         val indent = match.groupValues[1]
         val currentState = match.groupValues[2]
         val text = match.groupValues[3]
+        
+        // Detect if this is a top-level task (no indentation)
+        val isTopLevel = indent.isEmpty()
+        
+        // Detect Tasks plugin metadata (emojis or date patterns)
+        val hasTasksMetadata = TASKS_EMOJI_REGEX.containsMatchIn(line) || DATE_PATTERN_REGEX.containsMatchIn(line)
 
-        val newState = if (currentState.lowercase() == "x") " " else "x"
-        lines[lineIndex] = "$indent- [$newState] $text"
+        if (currentState == " ") {
+            // UNCHECKED → CHECKED
+            if (hasTasksMetadata) {
+                // Add completion marker: ✅ YYYY-MM-DD
+                val today = java.time.LocalDate.now().toString()
+                lines[lineIndex] = "$indent- [x] $text ✅ $today"
+            } else {
+                lines[lineIndex] = "$indent- [x] $text"
+            }
+        } else {
+            // CHECKED → UNCHECKED
+            var newText = text
+            // Remove completion marker if present
+            newText = COMPLETION_MARKER_REGEX.replace(newText, "")
+            lines[lineIndex] = "$indent- [ ] $newText"
+        }
 
-        return writeFileContent(noteUri, lines.joinToString("\n"))
+        // Write the toggled content
+        val success = writeFileContent(noteUri, lines.joinToString("\n"))
+        
+        // Trigger sorting for top-level tasks when sync is enabled
+        if (success && isTopLevel && syncCompletedTasks) {
+            sortCompletedTasks(noteUri)
+        }
+        
+        return success
+    }
+    
+    /**
+     * Data class representing a task group (parent task + subtasks)
+     */
+    private data class TaskGroup(
+        val lines: MutableList<String>,
+        val statusVal: Int,
+        val priorityVal: Int
+    )
+    
+    /**
+     * Sort tasks in the file according to Completed Tasks plugin logic.
+     * Groups tasks with their subtasks and sorts by status first, then priority.
+     */
+    private fun sortCompletedTasks(noteUri: Uri) {
+        val content = readFileContent(noteUri) ?: return
+        val lines = content.lines()
+        
+        // Load settings (could be extended to read from .obsidian/plugins/completed-tasks/data.json)
+        val sortedStatuses = DEFAULT_SORTED_STATUSES
+        val priorityEmojis = DEFAULT_PRIORITY_EMOJIS
+        
+        // Helper functions
+        fun isTaskLine(line: String): Boolean {
+            val trimmed = line.trimStart()
+            return DEFAULT_STATUSES.any { trimmed.startsWith(it) }
+        }
+        
+        fun isTopLevelTask(line: String): Boolean {
+            return TASK_LINE_REGEX.matchEntire(line)?.let { 
+                it.groupValues[1].isEmpty() // No indent
+            } ?: false
+        }
+        
+        fun isSubtask(line: String): Boolean {
+            return isTaskLine(line) && !isTopLevelTask(line)
+        }
+        
+        fun getStatusSortVal(line: String): Int {
+            val trimmed = line.trimStart()
+            for ((index, status) in sortedStatuses.withIndex()) {
+                if (trimmed.startsWith(status)) return index + 1
+            }
+            return 0
+        }
+        
+        fun getPrioritySortVal(line: String): Int {
+            val trimmed = line.trimStart()
+            // Higher index = higher priority = should sort FIRST (use negative)
+            for ((index, emoji) in priorityEmojis.withIndex()) {
+                if (trimmed.contains(emoji)) return -index
+            }
+            return 1 // No priority emoji = sorts last
+        }
+        
+        // Step 1: Parse into task groups and non-task lines
+        data class ParsedItem(val isTask: Boolean, val taskGroup: TaskGroup?, val line: String?)
+        
+        val parsed = mutableListOf<ParsedItem>()
+        var i = 0
+        
+        while (i < lines.size) {
+            if (isTopLevelTask(lines[i])) {
+                val taskGroup = TaskGroup(
+                    lines = mutableListOf(lines[i]),
+                    statusVal = getStatusSortVal(lines[i]),
+                    priorityVal = getPrioritySortVal(lines[i])
+                )
+                i++
+                
+                // Collect all following subtasks
+                while (i < lines.size && isSubtask(lines[i])) {
+                    taskGroup.lines.add(lines[i])
+                    i++
+                }
+                
+                parsed.add(ParsedItem(true, taskGroup, null))
+            } else {
+                parsed.add(ParsedItem(false, null, lines[i]))
+                i++
+            }
+        }
+        
+        // Step 2: Sort consecutive task blocks
+        val finalLines = mutableListOf<String>()
+        val taskBuffer = mutableListOf<TaskGroup>()
+        
+        for (item in parsed) {
+            if (item.isTask && item.taskGroup != null) {
+                taskBuffer.add(item.taskGroup)
+            } else {
+                // Non-task line: sort and flush the buffer
+                if (taskBuffer.isNotEmpty()) {
+                    taskBuffer.sortWith(compareBy({ it.statusVal }, { it.priorityVal }))
+                    taskBuffer.forEach { group -> finalLines.addAll(group.lines) }
+                    taskBuffer.clear()
+                }
+                item.line?.let { finalLines.add(it) }
+            }
+        }
+        
+        // Flush remaining tasks at end
+        if (taskBuffer.isNotEmpty()) {
+            taskBuffer.sortWith(compareBy({ it.statusVal }, { it.priorityVal }))
+            taskBuffer.forEach { group -> finalLines.addAll(group.lines) }
+        }
+        
+        // Step 3: Write only if changed
+        val newContent = finalLines.joinToString("\n")
+        if (newContent != content) {
+            writeFileContent(noteUri, newContent)
+        }
     }
 
     /**

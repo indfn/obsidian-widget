@@ -122,6 +122,30 @@ class ChecklistRemoteViewsFactory(
 
         val views = RemoteViews(context.packageName, R.layout.widget_checklist_item)
 
+        // Set indentation using padding on the root (24dp per level for tabs)
+        val indentPx = (item.indentLevel * 24 * context.resources.displayMetrics.density).toInt()
+        views.setViewPadding(R.id.checklist_item_root, indentPx, 
+            (8 * context.resources.displayMetrics.density).toInt(), 
+            (4 * context.resources.displayMetrics.density).toInt(), 
+            (8 * context.resources.displayMetrics.density).toInt())
+
+        // Set chevron visibility and icon
+        if (item.hasChildren) {
+            views.setViewVisibility(R.id.checklist_chevron, android.view.View.VISIBLE)
+            views.setImageViewResource(
+                R.id.checklist_chevron,
+                if (item.isCollapsed) R.drawable.ic_chevron_right else R.drawable.ic_chevron_down
+            )
+            // Collapse intent - use EXTRA_IS_COLLAPSE flag to distinguish from checkbox toggle
+            views.setOnClickFillInIntent(R.id.checklist_chevron, Intent().apply {
+                putExtra(ObsidianWidgetProvider.EXTRA_LINE_INDEX, item.lineIndex)
+                putExtra(ObsidianWidgetProvider.EXTRA_WIDGET_ID, widgetId)
+                putExtra(ObsidianWidgetProvider.EXTRA_IS_COLLAPSE, true)
+            })
+        } else {
+            views.setViewVisibility(R.id.checklist_chevron, android.view.View.GONE)
+        }
+
         // Set checkbox icon
         views.setImageViewResource(
             R.id.checklist_checkbox,
@@ -148,11 +172,15 @@ class ChecklistRemoteViewsFactory(
             views.setOnClickFillInIntent(R.id.checklist_checkbox, fillIntent)
             val url = extractFirstUrl(item.text)
             if (url != null) {
-                views.setOnClickFillInIntent(R.id.checklist_item_root, Intent().apply {
+                views.setOnClickFillInIntent(R.id.checklist_text, Intent().apply {
                     putExtra(ObsidianWidgetProvider.EXTRA_URL, url)
                 })
             } else {
-                views.setOnClickFillInIntent(R.id.checklist_item_root, Intent())
+                // Open source note in Obsidian when tapping task text
+                views.setOnClickFillInIntent(R.id.checklist_text, Intent().apply {
+                    putExtra(ObsidianWidgetProvider.EXTRA_OPEN_SOURCE, true)
+                    putExtra(ObsidianWidgetProvider.EXTRA_WIDGET_ID, widgetId)
+                })
             }
         } else {
             views.setOnClickFillInIntent(R.id.checklist_item_root, fillIntent)

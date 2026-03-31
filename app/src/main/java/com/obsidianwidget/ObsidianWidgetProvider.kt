@@ -22,10 +22,13 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         private const val ACTION_ADD = "com.obsidianwidget.ACTION_ADD"
         private const val ACTION_NAV_LEFT = "com.obsidianwidget.ACTION_NAV_LEFT"
         private const val ACTION_NAV_RIGHT = "com.obsidianwidget.ACTION_NAV_RIGHT"
+        const val ACTION_OPEN_SOURCE = "com.obsidianwidget.ACTION_OPEN_SOURCE"
         const val EXTRA_LINE_INDEX = "extra_line_index"
         const val EXTRA_APPEND_TO_WIDGET = "extra_append_to_widget"
         const val EXTRA_WIDGET_ID = "extra_widget_id"
         const val EXTRA_URL = "extra_url"
+        const val EXTRA_OPEN_SOURCE = "extra_open_source"
+        const val EXTRA_IS_COLLAPSE = "extra_is_collapse"
 
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, ObsidianWidgetProvider::class.java).apply {
@@ -80,6 +83,10 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 openObsidian(context, widgetId)
             }
+            ACTION_OPEN_SOURCE -> {
+                val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+                openObsidian(context, widgetId)
+            }
             ACTION_TOGGLE -> {
                 val url = intent.getStringExtra(EXTRA_URL)
                 if (!url.isNullOrEmpty()) {
@@ -91,8 +98,30 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                     } catch (_: Exception) { }
                     return
                 }
-                val lineIndex = intent.getIntExtra(EXTRA_LINE_INDEX, -1)
+                // Check if this is a collapse action
+                val isCollapse = intent.getBooleanExtra(EXTRA_IS_COLLAPSE, false)
+                if (isCollapse) {
+                    val lineIndex = intent.getIntExtra(EXTRA_LINE_INDEX, -1)
+                    val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+                    if (lineIndex >= 0 && widgetId >= 0) {
+                        val vaultManager = VaultManager(context, widgetId)
+                        vaultManager.toggleCollapse(lineIndex)
+                        val appWidgetManager = AppWidgetManager.getInstance(context)
+                        val widgetIds = appWidgetManager.getAppWidgetIds(
+                            ComponentName(context, ObsidianWidgetProvider::class.java)
+                        )
+                        appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_checklist)
+                    }
+                    return
+                }
+                // Check if this is an "open source note" action
+                val openSource = intent.getBooleanExtra(EXTRA_OPEN_SOURCE, false)
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+                if (openSource) {
+                    openObsidian(context, widgetId)
+                    return
+                }
+                val lineIndex = intent.getIntExtra(EXTRA_LINE_INDEX, -1)
                 if (lineIndex >= 0) {
                     val vaultManager = VaultManager(context, widgetId)
                     vaultManager.toggleChecklistItem(lineIndex)
@@ -267,7 +296,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         if (vaultName != null) {
             val noteName = when (vaultManager.noteMode) {
                 VaultManager.NoteMode.PINNED ->
-                    vaultManager.getCurrentPinnedNoteName()?.removeSuffix(".md")
+                    vaultManager.getCurrentPinnedNoteRelativePath()
                 VaultManager.NoteMode.DAILY -> {
                     val folder = vaultManager.dailyFolder
                     val date = java.time.LocalDate.now()
@@ -276,7 +305,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            if (noteName != null) {
+            if (!noteName.isNullOrEmpty()) {
                 try {
                     val obsidianUri = android.net.Uri.parse(
                         "obsidian://open?vault=${android.net.Uri.encode(vaultName)}&file=${android.net.Uri.encode(noteName)}"

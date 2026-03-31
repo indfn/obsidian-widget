@@ -30,9 +30,9 @@ class WidgetConfigActivity : AppCompatActivity() {
     private lateinit var transparencySeekBar: SeekBar
     private lateinit var transparencyLabel: TextView
     private lateinit var showButtonsToggle: Switch
-    private lateinit var sortUncheckedToggle: Switch
     private lateinit var tapCheckboxOnlyToggle: Switch
     private lateinit var showAddToTopToggle: Switch
+    private lateinit var syncCompletedTasksToggle: Switch
     private lateinit var dateFormatInput: EditText
     private lateinit var themeGroup: RadioGroup
     private var selectedAccentColor: String = "#D97757"
@@ -82,9 +82,9 @@ class WidgetConfigActivity : AppCompatActivity() {
         transparencySeekBar = findViewById(R.id.config_transparency)
         transparencyLabel = findViewById(R.id.config_transparency_label)
         showButtonsToggle = findViewById(R.id.config_show_buttons)
-        sortUncheckedToggle = findViewById(R.id.config_sort_unchecked)
         tapCheckboxOnlyToggle = findViewById(R.id.config_tap_checkbox_only)
         showAddToTopToggle = findViewById(R.id.config_show_add_to_top)
+        syncCompletedTasksToggle = findViewById(R.id.config_sync_completed_tasks)
         dateFormatInput = findViewById(R.id.config_date_format)
         themeGroup = findViewById(R.id.config_theme_group)
 
@@ -147,9 +147,9 @@ class WidgetConfigActivity : AppCompatActivity() {
 
         refreshNoteList()
         showButtonsToggle.isChecked = vaultManager.showButtons
-        sortUncheckedToggle.isChecked = vaultManager.sortUnchecked
         tapCheckboxOnlyToggle.isChecked = vaultManager.tapCheckboxOnly
         showAddToTopToggle.isChecked = vaultManager.showAddToTop
+        syncCompletedTasksToggle.isChecked = vaultManager.syncCompletedTasks
         dateFormatInput.setText(vaultManager.dateFormat)
 
         transparencySeekBar.progress = vaultManager.widgetAlpha
@@ -174,7 +174,9 @@ class WidgetConfigActivity : AppCompatActivity() {
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         vaultManager.vaultUri = uri
-        vaultManager.vaultName = uri.lastPathSegment?.substringAfterLast(':') ?: "Vault"
+        // Extract just the folder name (last component), not full path
+        val pathAfterColon = uri.lastPathSegment?.substringAfter(':') ?: "Vault"
+        vaultManager.vaultName = pathAfterColon.substringAfterLast('/')
         vaultPathText.text = vaultManager.vaultName
     }
 
@@ -273,13 +275,13 @@ class WidgetConfigActivity : AppCompatActivity() {
             noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.config_radio_pinned)
                 VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY,
             showButtons = showButtonsToggle.isChecked,
-            sortUnchecked = sortUncheckedToggle.isChecked,
             widgetAlpha = transparencySeekBar.progress,
             tapCheckboxOnly = tapCheckboxOnlyToggle.isChecked,
             addToTop = vaultManager.addToTop,
             showAddToTop = showAddToTopToggle.isChecked,
             widgetTheme = if (themeGroup.checkedRadioButtonId == R.id.config_theme_light) "light" else "dark",
-            accentColor = selectedAccentColor
+            accentColor = selectedAccentColor,
+            syncCompletedTasks = syncCompletedTasksToggle.isChecked
         )
 
         // Trigger update for this specific widget

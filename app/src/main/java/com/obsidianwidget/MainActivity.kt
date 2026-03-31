@@ -51,7 +51,9 @@ class MainActivity : AppCompatActivity() {
         )
 
         vaultManager.vaultUri = uri
-        vaultManager.vaultName = uri.lastPathSegment?.substringAfterLast(':') ?: "Vault"
+        // Extract just the folder name (last component), not full path
+        val pathAfterColon = uri.lastPathSegment?.substringAfter(':') ?: "Vault"
+        vaultManager.vaultName = pathAfterColon.substringAfterLast('/')
 
         vaultPathText.text = getString(R.string.vault_selected, vaultManager.vaultName)
         statusText.text = "\u2705 Vault configured. Add the widget to your home screen!\n\nTap the \u2699 icon on each widget to configure it."

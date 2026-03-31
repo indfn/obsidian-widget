@@ -5,30 +5,42 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingStart="4dp"
-    android:paddingEnd="4dp"
     android:paddingTop="8dp"
     android:paddingBottom="8dp"
-    android:background="?android:attr/selectableItemBackground">
+    android:paddingEnd="4dp">
 
+    <!-- Collapse/expand chevron -->
+    <ImageView
+        android:id="@+id/checklist_chevron"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginEnd="4dp"
+        android:contentDescription="Expand/Collapse"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_chevron_down"
+        android:visibility="gone" />
+
+    <!-- Checkbox -->
     <ImageView
         android:id="@+id/checklist_checkbox"
         android:layout_width="20dp"
         android:layout_height="20dp"
         android:layout_marginEnd="12dp"
         android:contentDescription="Toggle"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_checkbox_unchecked" />
 
+    <!-- Task text -->
     <TextView
         android:id="@+id/checklist_text"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
         android:textColor="@color/obsidian_text"
         android:textSize="14sp"
         android:fontFamily="sans-serif"
         android:lineSpacingExtra="2dp"
         android:maxLines="2"
-        android:ellipsize="end" />
+        android:ellipsize="end"
+        android:background="?android:attr/selectableItemBackground" />
 
 </LinearLayout>
